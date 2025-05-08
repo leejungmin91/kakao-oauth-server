@@ -17,7 +17,7 @@ def kakao_callback():
     data = {
         "grant_type": "authorization_code",
         "client_id": "cffae5a613ce4e125271ca9aa9289f06",
-        "redirect_uri": "https://YOUR_RENDER_URL/oauth/kakao/callback",
+        "redirect_uri": "https://kakao-oauth-server.onrender.com/oauth/kakao/callback",
         "code": code
     }
 
