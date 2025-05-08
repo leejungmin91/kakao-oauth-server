@@ -22,4 +22,4 @@ def kakao_callback():
     }
 
     res = requests.post(token_url, data=data)
-    return res.json()
+    return "이제 서비스를 정상 이용 하실 수 있습니다."
