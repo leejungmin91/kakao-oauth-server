@@ -22,4 +22,4 @@ def kakao_callback():
     }
 
     res = requests.post(token_url, data=data)
-    return "이제 서비스를 정상 이용 하실 수 있습니다."
+    return "서비스를 정상 이용 하실 수 있습니다. 메세지 발송까지 최대 10분 소요될 수 있습니다."
