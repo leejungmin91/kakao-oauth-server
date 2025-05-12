@@ -11,8 +11,26 @@ CLIENT_ID    = 'cffae5a613ce4e125271ca9aa9289f06'
 REDIRECT_URI = 'https://kakao-oauth-server.onrender.com/oauth/kakao/callback'
 SCOPE        = 'profile_nickname,friends,talk_message'
 
-# 카카오 인증 URL 생성
+# 홈 안내 페이지
+@app.route('/')
+def home():
+    return '''
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>서비스 안내</title>
+</head>
+<body>
+  <h1>네이버부동산 신규 매물 알림 서비스</h1>
+  <p>이 서비스는 네이버부동산 신규 매물 알림을 위해<br>
+  Kakao Talk API로 푸시 알림을 보내는 백엔드 스크립트입니다.</p>
+</body>
+</html>
+    '''
 
+# 카카오 인증 URL 생성
+@app.route('/oauth/kakao/authorize')
 def authorize_url():
     params = {
         'client_id':     CLIENT_ID,
@@ -20,10 +38,9 @@ def authorize_url():
         'response_type': 'code',
         'scope':         SCOPE
     }
-    return 'https://kauth.kakao.com/oauth/authorize?' + urlencode(params)
+    return redirect('https://kauth.kakao.com/oauth/authorize?' + urlencode(params))
 
 # 콜백 엔드포인트: code 받아 토큰 교환 및 저장
-
 @app.route('/oauth/kakao/callback')
 def kakao_callback():
     code = request.args.get('code')
@@ -61,7 +78,6 @@ def kakao_callback():
     '''
 
 # 토큰 조회/갱신 엔드포인트
-
 @app.route('/oauth/kakao/token')
 def get_kakao_token():
     # 토큰 파일 없으면 인증 유도
