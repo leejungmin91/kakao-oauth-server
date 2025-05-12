@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, redirect
+import requests
 import json
 import os
 import time
@@ -10,6 +11,7 @@ CLIENT_ID    = 'cffae5a613ce4e125271ca9aa9289f06'
 REDIRECT_URI = 'https://kakao-oauth-server.onrender.com/oauth/kakao/callback'
 SCOPE        = 'profile_nickname,friends,talk_message'
 
+# 카카오 인증 URL 생성
 
 def authorize_url():
     params = {
@@ -20,21 +22,24 @@ def authorize_url():
     }
     return 'https://kauth.kakao.com/oauth/authorize?' + urlencode(params)
 
+# 콜백 엔드포인트: code 받아 토큰 교환 및 저장
+
 @app.route('/oauth/kakao/callback')
 def kakao_callback():
     code = request.args.get('code')
     if not code:
         return 'code 파라미터가 없습니다.', 400
 
-    # authorization code로 access/refresh token 발급
-    token_url = 'https://kauth.kakao.com/oauth/token'
-    data = {
-        'grant_type':    'authorization_code',
-        'client_id':     CLIENT_ID,
-        'redirect_uri':  REDIRECT_URI,
-        'code':          code
-    }
-    res = requests.post(token_url, data=data)
+    # authorization_code → tokens 발급
+    res = requests.post(
+        'https://kauth.kakao.com/oauth/token',
+        data={
+            'grant_type':    'authorization_code',
+            'client_id':     CLIENT_ID,
+            'redirect_uri':  REDIRECT_URI,
+            'code':          code
+        }
+    )
     if res.status_code != 200:
         return f'Token 교환 실패: {res.text}', res.status_code
 
@@ -55,29 +60,30 @@ def kakao_callback():
 </html>
     '''
 
+# 토큰 조회/갱신 엔드포인트
+
 @app.route('/oauth/kakao/token')
 def get_kakao_token():
-    # 토큰 파일이 없으면 로그인 페이지로 리다이렉트
+    # 토큰 파일 없으면 인증 유도
     if not os.path.exists(TOKENS_FILE):
         return redirect(authorize_url())
 
     with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
         tokens = json.load(f)
 
-    # 토큰 만료 여부 확인 (만료 시 refresh)
     now = time.time()
     expires_at = tokens.get('issued_at', 0) + tokens.get('expires_in', 0)
     if now > expires_at:
-        # refresh token으로 갱신
-        refresh_url = 'https://kauth.kakao.com/oauth/token'
-        refresh_data = {
-            'grant_type':    'refresh_token',
-            'client_id':     CLIENT_ID,
-            'refresh_token': tokens.get('refresh_token')
-        }
-        resp = requests.post(refresh_url, data=refresh_data)
+        # refresh_token으로 갱신
+        resp = requests.post(
+            'https://kauth.kakao.com/oauth/token',
+            data={
+                'grant_type':    'refresh_token',
+                'client_id':     CLIENT_ID,
+                'refresh_token': tokens.get('refresh_token')
+            }
+        )
         if resp.status_code != 200:
-            # 갱신 실패 시 재인가 필요
             return redirect(authorize_url())
         new = resp.json()
         tokens.update({
@@ -89,10 +95,8 @@ def get_kakao_token():
         with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
             json.dump(tokens, f, ensure_ascii=False, indent=2)
 
-    # 유효한 토큰 반환
     return jsonify(tokens)
 
 if __name__ == '__main__':
-    # Render 환경의 PORT 환경변수 지원
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port)
