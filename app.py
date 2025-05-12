@@ -9,20 +9,13 @@ TOKENS_FILE = 'kakao_tokens.json'
 CLIENT_ID    = 'cffae5a613ce4e125271ca9aa9289f06'
 REDIRECT_URI = 'https://kakao-oauth-server.onrender.com/oauth/kakao/callback'
 
-# 전역 변수에 마지막으로 수신한 authorization code 저장
-latest_code = None
-
 @app.route('/oauth/kakao/callback')
 def kakao_callback():
-    global latest_code
     code = request.args.get('code')
     if not code:
         return 'code 파라미터가 없습니다.', 400
 
-    # 받은 code를 가로채서 저장
-    latest_code = code
-
-    # 카카오 토큰 교환 요청
+    # authorization code로 access/refresh token 발급
     token_url = 'https://kauth.kakao.com/oauth/token'
     data = {
         'grant_type':    'authorization_code',
@@ -34,13 +27,13 @@ def kakao_callback():
     if res.status_code != 200:
         return f'Token 교환 실패: {res.text}', res.status_code
 
-    # 응답 토큰 저장
     tokens = res.json()
     tokens['issued_at'] = time.time()
+    # 토큰 저장
     with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
         json.dump(tokens, f, ensure_ascii=False, indent=2)
 
-    # 사용자 안내 페이지
+    # 사용자 안내
     return '''
 <!DOCTYPE html>
 <html lang="ko">
@@ -52,17 +45,37 @@ def kakao_callback():
 </html>
     '''
 
-@app.route('/oauth/kakao/code')
-def get_code():
-    """
-    최근 callback에서 수신한 code를 반환하는 엔드포인트
-    클라이언트 스크립트가 이 endpoint를 폴링하여 code를 가져올 수 있습니다.
-    """
-    if latest_code is None:
-        # 아직 code가 수신되지 않았으면 204 No Content
-        return '', 204
-    return jsonify({'code': latest_code})
+@app.route('/oauth/kakao/token')
+def get_kakao_token():
+    # 저장된 access/refresh token 반환
+    if not os.path.exists(TOKENS_FILE):
+        return jsonify({'error': '토큰이 존재하지 않습니다.'}), 404
+    with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
+        tokens = json.load(f)
+    # 토큰 만료 확인
+    now = time.time()
+    if now > tokens.get('issued_at', 0) + tokens.get('expires_in', 0):
+        # refresh token으로 갱신
+        refresh_url = 'https://kauth.kakao.com/oauth/token'
+        refresh_data = {
+            'grant_type':    'refresh_token',
+            'client_id':     CLIENT_ID,
+            'refresh_token': tokens.get('refresh_token')
+        }
+        resp = requests.post(refresh_url, data=refresh_data)
+        if resp.status_code == 200:
+            new = resp.json()
+            tokens.update({
+                'access_token':  new.get('access_token', tokens['access_token']),
+                'expires_in':    new.get('expires_in', tokens.get('expires_in')),
+                'refresh_token': new.get('refresh_token', tokens.get('refresh_token'))
+            })
+            tokens['issued_at'] = now
+            with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(tokens, f, ensure_ascii=False, indent=2)
+        else:
+            return jsonify({'error': '토큰 갱신 실패'}), 401
+    return jsonify(tokens)
 
 if __name__ == '__main__':
-    # 외부 접근 허용
     app.run(host='0.0.0.0', port=8000)
