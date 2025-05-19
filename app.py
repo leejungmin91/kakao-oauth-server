@@ -44,10 +44,16 @@ def authorize_url():
 @app.route('/oauth/kakao/callback')
 def kakao_callback():
     code = request.args.get('code')
+    state = request.args.get('state')
+
     if not code:
         return 'code 파라미터가 없습니다.', 400
 
-    # authorization_code → tokens 발급
+    # ✅ code 항상 저장 (관리자/사용자 모두)
+    with open("latest_code.txt", "w") as f:
+        f.write(code)
+
+    # 🔁 authorization_code → tokens 발급
     res = requests.post(
         'https://kauth.kakao.com/oauth/token',
         data={
@@ -62,10 +68,12 @@ def kakao_callback():
 
     tokens = res.json()
     tokens['issued_at'] = time.time()
-    with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(tokens, f, ensure_ascii=False, indent=2)
 
-    # 사용자 안내
+    # ✅ 관리자 state일 때만 토큰 파일 저장
+    if state == "admin":
+        with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(tokens, f, ensure_ascii=False, indent=2)
+
     return '''
 <!DOCTYPE html>
 <html lang="ko">
@@ -80,15 +88,25 @@ def kakao_callback():
 # 토큰 조회/갱신 엔드포인트
 @app.route('/oauth/kakao/token')
 def get_kakao_token():
+    state = request.args.get('state')
+
+    # ⚠️ admin 외에는 접근 금지
+    if state != 'admin':
+        return jsonify({
+            "error": "unauthorized",
+            "message": "관리자 전용 요청입니다. state=admin을 포함하세요."
+        }), 403
+
     # 토큰 파일 없으면 인증 유도
     if not os.path.exists(TOKENS_FILE):
-        return redirect(authorize_url())
+        return redirect(authorize_url() + "&state=admin")
 
     with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
         tokens = json.load(f)
 
     now = time.time()
     expires_at = tokens.get('issued_at', 0) + tokens.get('expires_in', 0)
+
     if now > expires_at:
         # refresh_token으로 갱신
         resp = requests.post(
@@ -100,14 +118,16 @@ def get_kakao_token():
             }
         )
         if resp.status_code != 200:
-            return redirect(authorize_url())
+            return redirect(authorize_url() + "&state=admin")
+
         new = resp.json()
         tokens.update({
-            'access_token':  new.get('access_token', tokens['access_token']),
+            'access_token':  new.get('access_token', tokens.get('access_token')),
             'expires_in':    new.get('expires_in', tokens.get('expires_in')),
             'refresh_token': new.get('refresh_token', tokens.get('refresh_token'))
         })
         tokens['issued_at'] = now
+
         with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
             json.dump(tokens, f, ensure_ascii=False, indent=2)
 
