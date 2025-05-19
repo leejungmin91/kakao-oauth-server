@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 app = Flask(__name__)
 TOKENS_FILE = 'kakao_tokens.json'
 CLIENT_ID    = 'cffae5a613ce4e125271ca9aa9289f06'
-REDIRECT_URI = 'https://kakao-oauth-server.onrender.com/oauth/kakao/callback'
+REDIRECT_URI = 'http://34.60.194.94:8000/oauth/kakao/callback'
 SCOPE        = 'profile_nickname,friends,talk_message'
 
 # 홈 안내 페이지
@@ -48,10 +48,6 @@ def kakao_callback():
 
     if not code:
         return 'code 파라미터가 없습니다.', 400
-
-    # ✅ code 항상 저장 (관리자/사용자 모두)
-    with open("latest_code.txt", "w") as f:
-        f.write(code)
 
     # 🔁 authorization_code → tokens 발급
     res = requests.post(
